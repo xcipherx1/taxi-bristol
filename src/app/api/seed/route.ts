@@ -5,18 +5,33 @@ import { hashPassword } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
+// Allow GET (visit in browser) or POST
+export async function GET() {
+  return seedDatabase();
+}
+
 export async function POST() {
+  return seedDatabase();
+}
+
+async function seedDatabase() {
   try {
     if (!db) {
       return NextResponse.json({ error: "Database not configured. Set DATABASE_URL environment variable." }, { status: 500 });
     }
 
+    // Create default admin if none exists
     const existingAdmin = await db.select().from(adminUsers).limit(1);
     if (existingAdmin.length === 0) {
       const passwordHash = await hashPassword("ChangeMe123!");
-      await db.insert(adminUsers).values({ email: "admin@taxiservicebristol.uk.com", passwordHash, role: "admin" });
+      await db.insert(adminUsers).values({
+        email: "admin@taxiservicebristol.uk.com",
+        passwordHash,
+        role: "admin",
+      });
     }
 
+    // Create default rates if none exist
     const existingRates = await db.select().from(rates).limit(1);
     if (existingRates.length === 0) {
       await db.insert(rates).values([
