@@ -128,10 +128,11 @@ async function seedDatabase() {
       adminExists: existingAdmin.length > 0,
       ratesExist: existingRates.length > 0,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const err = error as { message?: string };
     console.error("Seed error:", error);
     return NextResponse.json(
-      { error: "Failed to seed database", details: error.message },
+      { error: "Failed to seed database", details: err.message || "Unknown error" },
       { status: 500 }
     );
   }
