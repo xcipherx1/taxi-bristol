@@ -2,10 +2,10 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { adminUsers, rates } from "@/lib/schema";
 import { hashPassword } from "@/lib/auth";
+import { sql } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
 
-// Allow GET (visit in browser) or POST
 export async function GET() {
   return seedDatabase();
 }
@@ -17,10 +17,87 @@ export async function POST() {
 async function seedDatabase() {
   try {
     if (!db) {
-      return NextResponse.json({ error: "Database not configured. Set DATABASE_URL environment variable." }, { status: 500 });
+      return NextResponse.json(
+        { error: "Database not configured" },
+        { status: 500 }
+      );
     }
 
-    // Create default admin if none exists
+    // Create tables if they don't exist
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS admin_users (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        email VARCHAR(255) UNIQUE NOT NULL,
+        password_hash VARCHAR(255) NOT NULL,
+        role VARCHAR(50) DEFAULT 'admin',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS rates (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        route_name VARCHAR(255) NOT NULL,
+        pickup_location VARCHAR(255) NOT NULL,
+        dropoff_location VARCHAR(255) NOT NULL,
+        price_pounds DECIMAL(10,2) NOT NULL,
+        is_active BOOLEAN DEFAULT true
+      )
+    `);
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS bookings (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        booking_reference VARCHAR(10) UNIQUE NOT NULL,
+        pickup_location TEXT NOT NULL,
+        dropoff_location TEXT NOT NULL,
+        pickup_datetime TIMESTAMP NOT NULL,
+        passengers INTEGER NOT NULL,
+        child_seat_required BOOLEAN DEFAULT false,
+        child_seat_age INTEGER,
+        pet_traveling BOOLEAN DEFAULT false,
+        special_requests TEXT,
+        fixed_price DECIMAL(10,2) NOT NULL,
+        customer_name VARCHAR(100) NOT NULL,
+        customer_email VARCHAR(255) NOT NULL,
+        customer_phone VARCHAR(20) NOT NULL,
+        company_name VARCHAR(255),
+        is_business_account BOOLEAN DEFAULT false,
+        status VARCHAR(20) DEFAULT 'new',
+        vehicle_type VARCHAR(50) DEFAULT 'standard',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS business_accounts (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        company_name VARCHAR(255) NOT NULL,
+        contact_name VARCHAR(100) NOT NULL,
+        contact_email VARCHAR(255) UNIQUE NOT NULL,
+        contact_phone VARCHAR(20) NOT NULL,
+        credit_limit DECIMAL(10,2) DEFAULT 500,
+        monthly_invoice_day INTEGER DEFAULT 1,
+        is_active BOOLEAN DEFAULT true,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS contact_messages (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        name VARCHAR(100) NOT NULL,
+        email VARCHAR(255) NOT NULL,
+        phone VARCHAR(20),
+        subject VARCHAR(100) NOT NULL,
+        message TEXT NOT NULL,
+        status VARCHAR(20) DEFAULT 'new',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Seed admin user
     const existingAdmin = await db.select().from(adminUsers).limit(1);
     if (existingAdmin.length === 0) {
       const passwordHash = await hashPassword("ChangeMe123!");
@@ -31,7 +108,7 @@ async function seedDatabase() {
       });
     }
 
-    // Create default rates if none exist
+    // Seed default rates
     const existingRates = await db.select().from(rates).limit(1);
     if (existingRates.length === 0) {
       await db.insert(rates).values([
@@ -45,9 +122,17 @@ async function seedDatabase() {
       ]);
     }
 
-    return NextResponse.json({ success: true, message: "Database seeded successfully" });
-  } catch (error) {
+    return NextResponse.json({
+      success: true,
+      message: "Database seeded successfully",
+      adminExists: existingAdmin.length > 0,
+      ratesExist: existingRates.length > 0,
+    });
+  } catch (error: any) {
     console.error("Seed error:", error);
-    return NextResponse.json({ error: "Failed to seed database", details: String(error) }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to seed database", details: error.message },
+      { status: 500 }
+    );
   }
 }
